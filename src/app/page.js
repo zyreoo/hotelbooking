@@ -12,6 +12,8 @@ import {
   doc,
   updateDoc
 } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import { format, getDaysInMonth } from "date-fns";
 
 export default function Home() {
   const [properties, setProperties] = useState([]);
@@ -19,8 +21,7 @@ export default function Home() {
   const [newRooms, setNewRooms] = useState(1);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null); // for per-property loading
-
+  const [updatingId, setUpdatingId] = useState(null); 
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -60,6 +61,8 @@ export default function Home() {
     setProperties((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const router = useRouter();
+
   return (
     <div className={styles.page}>
       <main className={styles.main}>
@@ -94,7 +97,15 @@ export default function Home() {
         ) : (
           <div className={styles.cards}>
             {properties.map((property) => (
-              <div key={property.id} className={styles.card}>
+              <div
+                key={property.id}
+                className={styles.card}
+                onClick={e => {
+                  if (e.target.tagName === 'BUTTON') return;
+                  router.push(`/${encodeURIComponent(property.name)}`);
+                }}
+                style={{ cursor: "pointer" }}
+              >
                 <h2>{property.name}</h2>
                 <p>Rooms: {property.rooms}</p>
                 <button
