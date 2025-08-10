@@ -5,6 +5,7 @@ import { db } from "../../firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { format, getDaysInMonth } from "date-fns";
 import styles from "../page.module.css";
+import Link from "next/link";
 
 export default function PropertyPage() {
   const { propertyname } = useParams();
@@ -34,6 +35,9 @@ export default function PropertyPage() {
 
   return (
     <main style={{ padding: 32 }}>
+      <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 24, fontSize: 18, color: 'var(--foreground)' }}>
+        <span style={{ fontSize: 24, lineHeight: 1 }}>&larr;</span> Back
+      </Link>
       <h1 style={{ marginBottom: 16 }}>{property.name}</h1>
       <p style={{ marginBottom: 32 }}>Rooms: {property.rooms}</p>
       {property.rooms > 0 && (
