@@ -9,7 +9,8 @@ import {
   query,
   orderBy,
   deleteDoc,
-  doc
+  doc,
+  updateDoc
 } from "firebase/firestore";
 
 export default function Home() {
@@ -18,6 +19,7 @@ export default function Home() {
   const [newRooms, setNewRooms] = useState(1);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null); // for per-property loading
 
 
   useEffect(() => {
@@ -40,6 +42,14 @@ export default function Home() {
     setNewName("");
     setNewRooms(1);
     setAdding(false);
+  };
+
+  const handleAddRoom = async (id, currentRooms) => {
+    setUpdatingId(id);
+    const propertyRef = doc(db, "properties", id);
+    await updateDoc(propertyRef, { rooms: currentRooms + 1 });
+    setProperties((prev) => prev.map((p) => p.id === id ? { ...p, rooms: p.rooms + 1 } : p));
+    setUpdatingId(null);
   };
 
   const handleDeleteProperty = async (id) => {
@@ -87,6 +97,14 @@ export default function Home() {
               <div key={property.id} className={styles.card}>
                 <h2>{property.name}</h2>
                 <p>Rooms: {property.rooms}</p>
+                <button
+                  onClick={() => handleAddRoom(property.id, property.rooms)}
+                  className={styles.primary}
+                  style={{marginTop:8, marginRight:8}}
+                  disabled={loading || updatingId === property.id}
+                >
+                  {updatingId === property.id ? "Adding..." : "Add Room"}
+                </button>
                 <button onClick={() => handleDeleteProperty(property.id)} className={styles.primary} style={{marginTop:8}} disabled={loading}>
                   Delete
                 </button>
