@@ -7,12 +7,15 @@ import {
   getDocs,
   addDoc,
   query,
-  orderBy
+  orderBy,
+  deleteDoc,
+  doc
 } from "firebase/firestore";
 
 export default function Home() {
   const [properties, setProperties] = useState([]);
   const [newName, setNewName] = useState("");
+  const [newRooms, setNewRooms] = useState(1);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
@@ -28,14 +31,23 @@ export default function Home() {
     fetchProperties();
   }, [adding]);
 
-  // Add new property
+
   const handleAddProperty = async (e) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newName.trim() || !newRooms || newRooms < 1) return;
     setAdding(true);
-    await addDoc(collection(db, "properties"), { name: newName.trim() });
+    await addDoc(collection(db, "properties"), { name: newName.trim(), rooms: Number(newRooms) });
     setNewName("");
+    setNewRooms(1);
     setAdding(false);
+  };
+
+  const handleDeleteProperty = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this property?")) return;
+    setLoading(true);
+    await deleteDoc(doc(db, "properties", id));
+    setLoading(false);
+    setProperties((prev) => prev.filter((p) => p.id !== id));
   };
 
   return (
@@ -51,7 +63,17 @@ export default function Home() {
             disabled={adding}
             className={styles.input}
           />
-          <button type="submit" disabled={adding || !newName.trim()} className={styles.primary}>
+          <input
+            type="number"
+            min={1}
+            placeholder="Rooms"
+            value={newRooms}
+            onChange={e => setNewRooms(e.target.value)}
+            disabled={adding}
+            className={styles.input}
+            style={{ width: 80 }}
+          />
+          <button type="submit" disabled={adding || !newName.trim() || !newRooms || newRooms < 1} className={styles.primary}>
             {adding ? "Adding..." : "Create Property"}
           </button>
         </form>
@@ -64,6 +86,10 @@ export default function Home() {
             {properties.map((property) => (
               <div key={property.id} className={styles.card}>
                 <h2>{property.name}</h2>
+                <p>Rooms: {property.rooms}</p>
+                <button onClick={() => handleDeleteProperty(property.id)} className={styles.primary} style={{marginTop:8}} disabled={loading}>
+                  Delete
+                </button>
               </div>
             ))}
           </div>
