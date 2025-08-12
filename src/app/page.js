@@ -39,7 +39,9 @@ export default function Home() {
     e.preventDefault();
     if (!newName.trim() || !newRooms || newRooms < 1) return;
     setAdding(true);
-    await addDoc(collection(db, "properties"), { name: newName.trim(), rooms: Number(newRooms) });
+    const count = Number(newRooms);
+    const defaultNames = Array.from({ length: count }, (_, i) => `Room ${i + 1}`);
+    await addDoc(collection(db, "properties"), { name: newName.trim(), rooms: count, roomNames: defaultNames });
     setNewName("");
     setNewRooms(1);
     setAdding(false);
@@ -48,8 +50,12 @@ export default function Home() {
   const handleAddRoom = async (id, currentRooms) => {
     setUpdatingId(id);
     const propertyRef = doc(db, "properties", id);
-    await updateDoc(propertyRef, { rooms: currentRooms + 1 });
-    setProperties((prev) => prev.map((p) => p.id === id ? { ...p, rooms: p.rooms + 1 } : p));
+    const target = properties.find((p) => p.id === id);
+    const existingNames = Array.isArray(target?.roomNames) ? target.roomNames : [];
+    const nextRooms = currentRooms + 1;
+    const nextNames = Array.from({ length: nextRooms }, (_, i) => existingNames[i] || `Room ${i + 1}`);
+    await updateDoc(propertyRef, { rooms: nextRooms, roomNames: nextNames });
+    setProperties((prev) => prev.map((p) => p.id === id ? { ...p, rooms: nextRooms, roomNames: nextNames } : p));
     setUpdatingId(null);
   };
 
