@@ -17,27 +17,39 @@ export default function PropertyPage() {
   const [addingRoom, setAddingRoom] = useState(false);
 
   useEffect(() => {
+    let unsubscribe = null;
+    
     const fetchProperty = async () => {
       setLoading(true);
-      const q = query(collection(db, "properties"), where("name", "==", decodeURIComponent(propertyname)));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const propDoc = querySnapshot.docs[0];
-        const prop = { id: propDoc.id, ...propDoc.data() };
-        setProperty(prop);
-        // live bookings listener for this property
-        const unsub = onSnapshot(collection(db, "properties", prop.id, "bookings"), (snap) => {
-          const bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setProperty((prev) => prev ? { ...prev, bookings } : prev);
-        });
-        return () => unsub();
+      try {
+        const q = query(collection(db, "properties"), where("name", "==", decodeURIComponent(propertyname)));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const propDoc = querySnapshot.docs[0];
+          const prop = { id: propDoc.id, ...propDoc.data() };
+          setProperty(prop);
+          setLoading(false);
+          
+          // Set up real-time listener for bookings
+          unsubscribe = onSnapshot(collection(db, "properties", prop.id, "bookings"), (snap) => {
+            const bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setProperty((prev) => prev ? { ...prev, bookings } : prev);
+          });
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error fetching property:", error);
+        setLoading(false);
       }
-      setLoading(false);
     };
-    const cleanupPromise = fetchProperty();
+    
+    fetchProperty();
+    
     return () => {
-      // ensure cleanup if fetchProperty returned an unsubscribe
-      if (typeof cleanupPromise === 'function') cleanupPromise();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [propertyname]);
 
