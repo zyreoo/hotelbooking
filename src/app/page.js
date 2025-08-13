@@ -110,19 +110,32 @@ export default function Home() {
     const checkInDate = new Date(bookingCheckIn);
     const checkOutDate = new Date(bookingCheckOut);
     if (!(checkOutDate > checkInDate)) return;
+    
+    // Get the selected property to know how many rooms are available
+    const selectedProperty = properties.find(p => p.id === bookingPropertyId);
+    if (!selectedProperty) return;
+    
     try {
       setBookingSaving(true);
       const bookingsCol = collection(db, "properties", bookingPropertyId, "bookings");
-      await addDoc(bookingsCol, {
-        guestName: bookingName.trim(),
-        phone: bookingPhone.trim(),
-        roomsBooked: roomsNum,
-        extraBed: Boolean(bookingExtraBed),
-        pricePerNight: priceNum,
-        checkIn: Timestamp.fromDate(checkInDate),
-        checkOut: Timestamp.fromDate(checkOutDate),
-        createdAt: serverTimestamp(),
-      });
+      
+      for (let i = 0; i < roomsNum; i++) {
+        await addDoc(bookingsCol, {
+          guestName: bookingName.trim(),
+          phone: bookingPhone.trim(),
+          roomIndex: i,
+          numberOfRooms: roomsNum,
+          extraBed: Boolean(bookingExtraBed),
+          pricePerNight: priceNum,
+          checkIn: Timestamp.fromDate(checkInDate),
+          checkOut: Timestamp.fromDate(checkOutDate),
+          advancePayment: 0, 
+          isConfirmed: false, 
+          isFullyPaid: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+      
       setBookingName("");
       setBookingPhone("");
       setBookingRooms(1);
