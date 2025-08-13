@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { db } from "../../firebase";
-import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, updateDoc, onSnapshot } from "firebase/firestore";
 import { format, getDaysInMonth } from "date-fns";
 import styles from "../page.module.css";
 import Link from "next/link";
@@ -22,11 +22,23 @@ export default function PropertyPage() {
       const q = query(collection(db, "properties"), where("name", "==", decodeURIComponent(propertyname)));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        setProperty({ id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() });
+        const propDoc = querySnapshot.docs[0];
+        const prop = { id: propDoc.id, ...propDoc.data() };
+        setProperty(prop);
+        // live bookings listener for this property
+        const unsub = onSnapshot(collection(db, "properties", prop.id, "bookings"), (snap) => {
+          const bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setProperty((prev) => prev ? { ...prev, bookings } : prev);
+        });
+        return () => unsub();
       }
       setLoading(false);
     };
-    fetchProperty();
+    const cleanupPromise = fetchProperty();
+    return () => {
+      // ensure cleanup if fetchProperty returned an unsubscribe
+      if (typeof cleanupPromise === 'function') cleanupPromise();
+    };
   }, [propertyname]);
 
   if (loading) return <main style={{ padding: 32 }}><h2>Loading...</h2></main>;
@@ -148,7 +160,29 @@ export default function PropertyPage() {
                   </td>
                   {rooms.map(room => (
                     <td key={room} className={styles.propertyGridTd}>
-                      {/* Empty for now */}
+                      {(() => {
+                        const date = new Date(now.getFullYear(), now.getMonth(), day);
+                        const bookings = Array.isArray(property.bookings) ? property.bookings : [];
+                        const active = bookings.find(b => {
+                          if (!b.checkIn || !b.checkOut) return false;
+                          try {
+                            const inDate = b.checkIn.toDate ? b.checkIn.toDate() : new Date(b.checkIn);
+                            const outDate = b.checkOut.toDate ? b.checkOut.toDate() : new Date(b.checkOut);
+                            // Treat nights as [checkIn, checkOut) – not including checkout day
+                            return date >= new Date(inDate.getFullYear(), inDate.getMonth(), inDate.getDate()) && date < new Date(outDate.getFullYear(), outDate.getMonth(), outDate.getDate());
+                          } catch {
+                            return false;
+                          }
+                        });
+                        return active ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600 }}>{active.guestName}</span>
+                            <span style={{ fontSize: 12, opacity: 0.8 }}>
+                              ${active.pricePerNight}/night {active.extraBed ? '(+ extra bed)' : ''}
+                            </span>
+                          </div>
+                        ) : null;
+                      })()}
                     </td>
                   ))}
                 </tr>

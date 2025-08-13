@@ -10,7 +10,9 @@ import {
   orderBy,
   deleteDoc,
   doc,
-  updateDoc
+    updateDoc,
+    serverTimestamp,
+    Timestamp
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { format, getDaysInMonth } from "date-fns";
@@ -22,13 +24,27 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [updatingId, setUpdatingId] = useState(null); 
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingSaving, setBookingSaving] = useState(false);
+  const [bookingName, setBookingName] = useState("");
+  const [bookingRooms, setBookingRooms] = useState(1);
+  const [bookingPhone, setBookingPhone] = useState("");
+  const [bookingPropertyId, setBookingPropertyId] = useState("");
+  const [bookingExtraBed, setBookingExtraBed] = useState(false);
+  const [bookingPrice, setBookingPrice] = useState("");
+  const [bookingCheckIn, setBookingCheckIn] = useState("");
+  const [bookingCheckOut, setBookingCheckOut] = useState("");
 
   useEffect(() => {
     const fetchProperties = async () => {
       setLoading(true);
       const q = query(collection(db, "properties"), orderBy("name"));
       const querySnapshot = await getDocs(q);
-      setProperties(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const props = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setProperties(props);
+      if (!bookingPropertyId && props.length > 0) {
+        setBookingPropertyId(props[0].id);
+      }
       setLoading(false);
     };
     fetchProperties();
@@ -68,11 +84,171 @@ export default function Home() {
   };
 
   const router = useRouter();
+  const selectedProperty = properties.find((p) => p.id === bookingPropertyId);
+  const selectedRooms = selectedProperty ? selectedProperty.rooms : 0;
+  const normalizeYmd = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const computeNights = (inStr, outStr) => {
+    if (!inStr || !outStr) return 0;
+    const ci = normalizeYmd(new Date(inStr));
+    const co = normalizeYmd(new Date(outStr));
+    const diffMs = co - ci;
+    return diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
+  };
+  const nights = computeNights(bookingCheckIn, bookingCheckOut);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const checkoutMin = bookingCheckIn || todayIso;
+
+  const handleCreateBooking = async (e) => {
+    e.preventDefault();
+    if (!bookingName.trim()) return;
+    if (!bookingPropertyId) return;
+    const roomsNum = Number(bookingRooms);
+    if (!roomsNum || roomsNum < 1) return;
+    const priceNum = Number(bookingPrice);
+    if (Number.isNaN(priceNum) || priceNum < 0) return;
+    if (!bookingCheckIn || !bookingCheckOut) return;
+    const checkInDate = new Date(bookingCheckIn);
+    const checkOutDate = new Date(bookingCheckOut);
+    if (!(checkOutDate > checkInDate)) return;
+    try {
+      setBookingSaving(true);
+      const bookingsCol = collection(db, "properties", bookingPropertyId, "bookings");
+      await addDoc(bookingsCol, {
+        guestName: bookingName.trim(),
+        phone: bookingPhone.trim(),
+        roomsBooked: roomsNum,
+        extraBed: Boolean(bookingExtraBed),
+        pricePerNight: priceNum,
+        checkIn: Timestamp.fromDate(checkInDate),
+        checkOut: Timestamp.fromDate(checkOutDate),
+        createdAt: serverTimestamp(),
+      });
+      setBookingName("");
+      setBookingPhone("");
+      setBookingRooms(1);
+      setBookingExtraBed(false);
+      setBookingPrice("");
+      setBookingCheckIn("");
+      setBookingCheckOut("");
+      setBookingOpen(false);
+    } finally {
+      setBookingSaving(false);
+    }
+  };
 
   return (
     <div className={styles.page}>
       <main className={styles.main}>
         <h1>Properties</h1>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setBookingOpen((v) => !v)}
+            className={styles.primary}
+          >
+            {bookingOpen ? 'Close Booking' : 'New Booking'}
+          </button>
+        </div>
+        {bookingOpen && (
+          <form onSubmit={handleCreateBooking} className={styles.form} style={{ flexWrap: 'wrap' }}>
+            <select
+              value={bookingPropertyId}
+              onChange={(e) => setBookingPropertyId(e.target.value)}
+              className={styles.input}
+              disabled={loading || bookingSaving || properties.length === 0}
+              style={{ minWidth: 180 }}
+            >
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Guest name"
+              value={bookingName}
+              onChange={(e) => setBookingName(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              style={{ minWidth: 220 }}
+            />
+            <input
+              type="tel"
+              placeholder="Phone number"
+              value={bookingPhone}
+              onChange={(e) => setBookingPhone(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              style={{ minWidth: 180 }}
+            />
+            <input
+              type="number"
+              min={1}
+              placeholder="Rooms"
+              value={bookingRooms}
+              onChange={(e) => setBookingRooms(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              style={{ width: 110 }}
+            />
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Price / night"
+              value={bookingPrice}
+              onChange={(e) => setBookingPrice(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              style={{ width: 150 }}
+            />
+            <input
+              type="date"
+              value={bookingCheckIn}
+              onChange={(e) => setBookingCheckIn(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              min={todayIso}
+              style={{ width: 170 }}
+            />
+            <input
+              type="date"
+              value={bookingCheckOut}
+              onChange={(e) => setBookingCheckOut(e.target.value)}
+              disabled={bookingSaving}
+              className={styles.input}
+              min={checkoutMin}
+              style={{ width: 170 }}
+            />
+            {nights > 0 && (
+              <span style={{ alignSelf: 'center', fontWeight: 600 }}>
+                {nights} {nights === 1 ? 'night' : 'nights'}
+              </span>
+            )}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={bookingExtraBed}
+                onChange={(e) => setBookingExtraBed(e.target.checked)}
+                disabled={bookingSaving}
+              />
+              Extra bed
+            </label>
+            <button
+              type="submit"
+              disabled={
+                bookingSaving ||
+                !bookingName.trim() ||
+                !bookingPropertyId ||
+                !bookingCheckIn ||
+                !bookingCheckOut ||
+                nights <= 0
+              }
+              className={styles.primary}
+            >
+              {bookingSaving ? 'Saving…' : 'Save Booking'}
+            </button>
+          </form>
+        )}
         <form onSubmit={handleAddProperty} className={styles.form}>
           <input
             type="text"
