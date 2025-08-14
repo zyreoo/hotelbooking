@@ -136,7 +136,7 @@ export default function PropertyPage() {
     setEditingBooking(null);
   };
 
-  const saveBookingChanges = async () => {
+    const saveBookingChanges = async () => {
     if (!selectedBooking || !editingBooking || savingBooking) return;
     
     try {
@@ -144,12 +144,17 @@ export default function PropertyPage() {
       const newNumberOfRooms = Number(editingBooking.numberOfRooms);
       const currentNumberOfRooms = selectedBooking.numberOfRooms || 1;
       
-      // If the number of rooms changed, we need to create/delete booking records
+      const bookings = Array.isArray(property.bookings) ? property.bookings : [];
+      const sameGuestBookings = bookings.filter(b => 
+        b.guestName === selectedBooking.guestName &&
+        b.checkIn?.toDate?.()?.getTime() === selectedBooking.checkIn?.toDate?.()?.getTime() &&
+        b.checkOut?.toDate?.()?.getTime() === selectedBooking.checkOut?.toDate?.()?.getTime()
+      ).sort((a, b) => (a.roomIndex || 0) - (b.roomIndex || 0));
+      
       if (newNumberOfRooms !== currentNumberOfRooms) {
         const bookingsCol = collection(db, "properties", property.id, "bookings");
         
         if (newNumberOfRooms > currentNumberOfRooms) {
-          // Adding more rooms - create new booking records
           for (let i = currentNumberOfRooms; i < newNumberOfRooms; i++) {
             await addDoc(bookingsCol, {
               guestName: editingBooking.guestName.trim(),
@@ -167,15 +172,6 @@ export default function PropertyPage() {
             });
           }
         } else {
-          // Removing rooms - delete excess booking records
-          const bookings = Array.isArray(property.bookings) ? property.bookings : [];
-          const sameGuestBookings = bookings.filter(b => 
-            b.guestName === selectedBooking.guestName &&
-            b.checkIn?.toDate?.()?.getTime() === selectedBooking.checkIn?.toDate?.()?.getTime() &&
-            b.checkOut?.toDate?.()?.getTime() === selectedBooking.checkOut?.toDate?.()?.getTime()
-          ).sort((a, b) => (a.roomIndex || 0) - (b.roomIndex || 0));
-          
-          // Delete bookings beyond the new number of rooms
           for (let i = newNumberOfRooms; i < sameGuestBookings.length; i++) {
             const bookingToDelete = sameGuestBookings[i];
             if (bookingToDelete.id) {
@@ -185,8 +181,6 @@ export default function PropertyPage() {
         }
       }
       
-      // Update the current booking record
-      const bookingRef = doc(db, "properties", property.id, "bookings", selectedBooking.id);
       const updateData = {
         guestName: editingBooking.guestName.trim(),
         phone: editingBooking.phone.trim(),
@@ -200,7 +194,19 @@ export default function PropertyPage() {
         checkOut: Timestamp.fromDate(new Date(editingBooking.checkOut)),
       };
       
-      await updateDoc(bookingRef, updateData);
+      const bookingsToUpdate = sameGuestBookings.slice(0, Math.min(newNumberOfRooms, sameGuestBookings.length));
+      
+      for (const booking of bookingsToUpdate) {
+        if (booking.id) {
+          try {
+            const bookingRef = doc(db, "properties", property.id, "bookings", booking.id);
+            await updateDoc(bookingRef, updateData);
+          } catch (error) {
+            console.error(`Error updating booking ${booking.id}:`, error);
+          }
+        }
+      }
+      
       closeBookingPopup();
     } catch (error) {
       console.error("Error updating booking:", error);
@@ -212,14 +218,31 @@ export default function PropertyPage() {
   const deleteBooking = async () => {
     if (!selectedBooking || deletingBooking) return;
     
-    if (!window.confirm(`Are you sure you want to delete the booking for ${selectedBooking.guestName}?`)) {
+    // Find all booking records for the same guest booking to show how many will be deleted
+    const bookings = Array.isArray(property.bookings) ? property.bookings : [];
+    const sameGuestBookings = bookings.filter(b => 
+      b.guestName === selectedBooking.guestName &&
+      b.checkIn?.toDate?.()?.getTime() === selectedBooking.checkIn?.toDate?.()?.getTime() &&
+      b.checkOut?.toDate?.()?.getTime() === selectedBooking.checkOut?.toDate?.()?.getTime()
+    );
+    
+    const roomCount = sameGuestBookings.length;
+    const roomText = roomCount === 1 ? 'room' : 'rooms';
+    
+    if (!window.confirm(`Are you sure you want to delete the booking for ${selectedBooking.guestName}? This will remove ${roomCount} ${roomText}.`)) {
       return;
     }
     
     try {
       setDeletingBooking(true);
-      const bookingRef = doc(db, "properties", property.id, "bookings", selectedBooking.id);
-      await deleteDoc(bookingRef);
+      
+      // Delete all related booking records (sameGuestBookings was already found above)
+      for (const booking of sameGuestBookings) {
+        if (booking.id) {
+          await deleteDoc(doc(db, "properties", property.id, "bookings", booking.id));
+        }
+      }
+      
       closeBookingPopup();
     } catch (error) {
       console.error("Error deleting booking:", error);
